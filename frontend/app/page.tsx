@@ -1,9 +1,7 @@
-// app/page.tsx
 "use client";
 import React from "react";
 import dynamic from "next/dynamic";
 
-// Dynamically import the map component to avoid SSR issues with Leaflet
 const RouteMap = dynamic(() => import("./components/RouteMap"), {
   ssr: false,
   loading: () => (
@@ -48,9 +46,11 @@ type Route = {
   objective: number;
   expanded: number;
   notes?: string;
+  summary?: RouteSummary; 
 };
 
 type RouteResponse = {
+  api_version?: string;
   nodes: Node[];
   edges: Edge[];
   route: Route;
@@ -103,25 +103,43 @@ export default function Page() {
 
       const data: RouteResponse = await res.json();
 
+
+      if (data.api_version && data.api_version !== "v1") {
+  
+        console.info(`Route API returned version: ${data.api_version}`);
+      }
+
+
       const nodesWithFuel = data.nodes.map((node, index) => ({
-        ...node,
-        fuel_price:
-          typeof node.fuel_price === "number"
-            ? node.fuel_price
-            : sampleFuelPriceForNode(node.id, index),
-      }));
+  ...node,
+  fuel_price:
+    typeof node.fuel_price === "number"
+      ? node.fuel_price
+      : sampleFuelPriceForNode(node.id, index),
+}));
 
-      setNodes(nodesWithFuel);
-      setEdges(
-        data.edges.map((e) => ({
-          from_: e.from_,
-          to: e.to,
-          distance: e.distance,
-        })),
-      );
-      setRoute(data.route);
+      const apiRoute = data.route ?? null;
+      if (apiRoute) {
+    if (!apiRoute.summary) {
+      apiRoute.summary = {
+      distance_km: apiRoute.total_distance ?? 0,
+      fuel_cost: apiRoute.fuel_cost ?? 0,
+      };
+    }
+  }
 
-      // On first load, initialize from/to from the route path if not set
+    setNodes(nodesWithFuel);
+    setEdges(
+      data.edges.map((e) => ({
+      from_: e.from_,
+      to: e.to,
+      distance: e.distance,
+      })),
+    );
+
+    setRoute(apiRoute);
+
+
       if (!useCurrentStartGoal && data.route.path.length > 0) {
         if (!from) setFrom(data.route.path[0]);
         if (!to) setTo(data.route.path[data.route.path.length - 1]);
@@ -135,10 +153,8 @@ export default function Page() {
     }
   };
 
-  // Initial load: let backend choose start/goal
   React.useEffect(() => {
     fetchRoute(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onSubmit = (e: React.FormEvent) => {
@@ -183,7 +199,6 @@ export default function Page() {
         onSubmit={onSubmit}
         style={{
           display: "grid",
-          // Responsive: auto-fit columns of at least 170px, stacking on small screens
           gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
           gap: "0.75rem",
           alignItems: "end",
@@ -387,68 +402,75 @@ export default function Page() {
           Route
         </h2>
 
-        {/* {!route ? ( */}
-        {/*   <p style={{ color: "#64748B", fontSize: "0.95rem" }}> */}
-        {/*     Fetch a route to see path details. */}
-        {/*   </p> */}
-        {/* ) : route.path.length ? ( */}
-        {/*   <> */}
-        {/*     <ol style={{ paddingLeft: "1.25rem", marginBottom: "0.75rem" }}> */}
-        {/*       {route.path.map((node, idx) => ( */}
-        {/*         <li key={`${node}-${idx}`} style={{ margin: "0.25rem 0" }}> */}
-        {/*           {node} */}
-        {/*         </li> */}
-        {/*       ))} */}
-        {/*     </ol> */}
-        {/*     <div */}
-        {/*       style={{ */}
-        {/*         display: "flex", */}
-        {/*         flexWrap: "wrap", */}
-        {/*         gap: "0.5rem", */}
-        {/*       }} */}
-        {/*     > */}
-        {/*       <div */}
-        {/*         style={{ */}
-        {/*           display: "inline-block", */}
-        {/*           padding: "0.35rem 0.6rem", */}
-        {/*           borderRadius: 999, */}
-        {/*           background: "#F1F5F9", */}
-        {/*           border: "1px solid #E2E8F0", */}
-        {/*           fontWeight: 600, */}
-        {/*           fontSize: "0.9rem", */}
-        {/*         }} */}
-        {/*       > */}
-        {/*         Total distance: {route.total_distance.toFixed(2)} */}
-        {/*       </div> */}
-        {/*       <div */}
-        {/*         style={{ */}
-        {/*           display: "inline-block", */}
-        {/*           padding: "0.35rem 0.6rem", */}
-        {/*           borderRadius: 999, */}
-        {/*           background: "#F1F5F9", */}
-        {/*           border: "1px solid #E2E8F0", */}
-        {/*           fontWeight: 600, */}
-        {/*           fontSize: "0.9rem", */}
-        {/*         }} */}
-        {/*       > */}
-        {/*         Fuel cost: {route.fuel_cost.toFixed(2)} */}
-        {/*       </div> */}
-        {/*     </div> */}
-        {/*     {route.notes ? ( */}
-        {/*       <p */}
-        {/*         style={{ */}
-        {/*           marginTop: "0.75rem", */}
-        {/*           color: "#64748B", */}
-        {/*           fontSize: "0.9rem", */}
-        {/*         }} */}
-        {/*       > */}
-        {/*         <strong>Notes:</strong> {route.notes} */}
-        {/*       </p> */}
-        {/*     ) : null} */}
-        {/*   </> */}
-        {/* ) : ( */}
-        {/*   <p style={{ color: "#991B1B" }}>No path found.</p> */}
-        {/* )} */}
+      {!route ? (
+        <p style={{ color: "#64748B", fontSize: "0.95rem" }}>
+          Fetch a route to see path details.
+        </p>
+      ) : route.path && route.path.length ? (
+        <>
+          <ol style={{ paddingLeft: "1.25rem", marginBottom: "0.75rem" }}>
+            {route.path.map((node, idx) => (
+              <li key={`${node}-${idx}`} style={{ margin: "0.25rem 0" }}>
+                {node}
+              </li>
+            ))}
+          </ol>
+
+          {/* Summary chips */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+              marginBottom: "0.5rem",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-block",
+                padding: "0.35rem 0.6rem",
+                borderRadius: 999,
+                background: "#F1F5F9",
+                border: "1px solid #E2E8F0",
+                fontWeight: 600,
+                fontSize: "0.9rem",
+              }}
+            >
+              Total distance:{" "}
+              {Number(route.summary?.distance_km ?? route.total_distance).toFixed(2)} km
+            </div>
+            <div
+              style={{
+                display: "inline-block",
+                padding: "0.35rem 0.6rem",
+                borderRadius: 999,
+                background: "#F1F5F9",
+                border: "1px solid #E2E8F0",
+                fontWeight: 600,
+                fontSize: "0.9rem",
+              }}
+            >
+              Fuel cost: ${Number(route.summary?.fuel_cost ?? route.fuel_cost).toFixed(2)}
+            </div>
+          </div>
+
+          {route.notes ? (
+            <p
+              style={{
+                marginTop: "0.75rem",
+                color: "#64748B",
+                fontSize: "0.9rem",
+              }}
+            >
+              <strong>Notes:</strong> {route.notes}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p style={{ color: "#991B1B" }}>No path found.</p>
+      )}
+
+
       </section>
     </main>
   );
